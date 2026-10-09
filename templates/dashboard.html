@@ -1,0 +1,261 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Flipkart Dashboard</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <style>
+    body {
+      margin: 0;
+      font-family: Arial, sans-serif;
+      display: flex;
+    }
+
+    .container {
+      display: flex;
+      width: 100%;
+    }
+
+    .sidebar {
+      width: 220px;
+      background-color: #1a1a2e;
+      color: #fff;
+      padding: 20px;
+      height: 100vh;
+    }
+
+    .sidebar h2 {
+      margin-bottom: 20px;
+    }
+
+    .sidebar ul {
+      list-style-type: none;
+      padding: 0;
+    }
+
+    .sidebar button {
+      width: 100%;
+      padding: 10px;
+      margin-bottom: 10px;
+      background-color: #16213e;
+      border: none;
+      color: #fff;
+      cursor: pointer;
+      text-align: left;
+    }
+
+    .sidebar button:hover {
+      background-color: #0f3460;
+    }
+
+    .content {
+      flex-grow: 1;
+      padding: 40px;
+    }
+
+    .product-table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 20px;
+    }
+
+    .product-table th, .product-table td {
+      border: 1px solid #ddd;
+      padding: 8px;
+      text-align: left;
+    }
+
+    .product-table th {
+      background-color: #f2f2f2;
+      position: sticky;
+      top: 0;
+    }
+
+    .product-table tr:nth-child(even) {
+      background-color: #f9f9f9;
+    }
+
+    .product-table tr:hover {
+      background-color: #f1f1f1;
+    }
+
+    .table-container {
+      max-height: 400px;
+      overflow-y: auto;
+      margin-top: 20px;
+    }
+
+    .hidden {
+      display: none;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <nav class="sidebar">
+      <h2>Dashboard</h2>
+      <ul>
+        <li><button onclick="loadChart('price')">Price Distribution</button></li>
+        <li><button onclick="loadChart('discount')">Avg Discount by Brand</button></li>
+        <li><button onclick="loadChart('kmeans')">KMeans Clustering</button></li>
+        <li><button onclick="loadChart('elbow')">Elbow Plot</button></li>
+      </ul>
+    </nav>
+    <main class="content">
+      <h2 id="chart-title">Select Dashboard</h2>
+      <canvas id="mainChart" width="800" height="400"></canvas>
+      <div id="productTableContainer" class="table-container"></div>
+    </main>
+  </div>
+
+  <script>
+    let chartInstance = null;
+
+    function destroyChart() {
+      if (chartInstance) {
+        chartInstance.destroy();
+        chartInstance = null;
+      }
+    }
+
+    function toggleView(showChart) {
+      const tableContainer = document.getElementById('productTableContainer');
+      if (showChart) {
+        tableContainer.classList.add('hidden');
+      } else {
+        tableContainer.classList.remove('hidden');
+      }
+    }
+
+    function loadChart(type) {
+      destroyChart();
+      toggleView(true);
+
+      const ctx = document.getElementById('mainChart').getContext('2d');
+
+      if (type === 'price') {
+        document.getElementById('chart-title').innerText = 'Price Distribution';
+        fetch('/api/price-distribution')
+          .then(res => res.json())
+          .then(data => {
+            const labels = Object.keys(data);
+            const values = Object.values(data);
+            chartInstance = new Chart(ctx, {
+              type: 'bar',
+              data: {
+                labels,
+                datasets: [{
+                  label: 'Number of Products',
+                  data: values,
+                  backgroundColor: '#2a9d8f'
+                }]
+              },
+              options: {
+                responsive: true,
+                scales: {
+                  y: { beginAtZero: true }
+                }
+              }
+            });
+          })
+          .catch(err => console.error("Price distribution fetch failed:", err));
+      }
+
+      else if (type === 'discount') {
+        document.getElementById('chart-title').innerText = 'Average Discount by Brand';
+        fetch('/api/discounts')
+          .then(res => res.json())
+          .then(data => {
+            const labels = Object.keys(data).slice(0, 10);
+            const values = Object.values(data).slice(0, 10);
+            chartInstance = new Chart(ctx, {
+              type: 'bar',
+              data: {
+                labels,
+                datasets: [{
+                  label: 'Avg Discount (%)',
+                  data: values,
+                  backgroundColor: '#f4a261'
+                }]
+              },
+              options: {
+                responsive: true,
+                scales: {
+                  y: { beginAtZero: true }
+                }
+              }
+            });
+          })
+          .catch(err => console.error("Discounts fetch failed:", err));
+      }
+
+      else if (type === 'kmeans') {
+        document.getElementById('chart-title').innerText = 'KMeans Clustering (Price vs Discount)';
+        fetch('/api/kmeans?k=3')
+          .then(res => res.json())
+          .then(data => {
+            const clusterColors = ['#e76f51', '#2a9d8f', '#264653'];
+            const datasets = [0, 1, 2].map(clusterId => {
+              const points = data.filter(d => d.Cluster === clusterId).map(d => ({
+                x: d.Price,
+                y: d["Computed Discount %"]
+              }));
+              return {
+                label: `Cluster ${clusterId}`,
+                data: points,
+                backgroundColor: clusterColors[clusterId],
+                pointRadius: 5
+              };
+            });
+            chartInstance = new Chart(ctx, {
+              type: 'scatter',
+              data: { datasets },
+              options: {
+                responsive: true,
+                scales: {
+                  x: { title: { display: true, text: 'Price (₹)' } },
+                  y: { title: { display: true, text: 'Discount (%)' } }
+                }
+              }
+            });
+          })
+          .catch(err => console.error("KMeans fetch failed:", err));
+      }
+
+      else if (type === 'elbow') {
+        document.getElementById('chart-title').innerText = 'Elbow Plot';
+        fetch('/api/elbow')
+          .then(res => res.json())
+          .then(data => {
+            const labels = data.map(d => d.k);
+            const values = data.map(d => d.inertia);
+            chartInstance = new Chart(ctx, {
+              type: 'line',
+              data: {
+                labels,
+                datasets: [{
+                  label: 'Inertia',
+                  data: values,
+                  borderColor: '#e76f51',
+                  fill: false
+                }]
+              },
+              options: {
+                responsive: true,
+                scales: {
+                  y: { title: { display: true, text: 'Inertia' } },
+                  x: { title: { display: true, text: 'Number of Clusters (k)' } }
+                }
+              }
+            });
+          })
+          .catch(err => console.error("Elbow plot fetch failed:", err));
+      }
+    }
+
+    document.addEventListener('DOMContentLoaded', () => {
+      loadChart('price'); // Default chart when page loads
+    });
+  </script>
+</body>
+</html>
